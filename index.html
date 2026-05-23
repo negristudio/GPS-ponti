@@ -285,19 +285,40 @@ const COLOR_LABEL = {red:'SOPRA',   blue:'SOTTO',   yellow:'VIDEO',  green:'NOTE
 const map = L.map('map', {
   zoomControl: false,
   attributionControl: true,
+  maxZoom: 21,
 }).setView([45.07, 7.68], 16);
 
-// Layer satellitare (Esri) e stradale (OSM)
+// Layer satellitari in ordine di qualità/zoom
+// Google Satellite: zoom fino a 21, massima risoluzione
 const layers = {
   satellite: L.tileLayer(
-    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    { attribution: 'Esri World Imagery', maxZoom: 20 }
+    'https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+    {
+      subdomains: ['mt0','mt1','mt2','mt3'],
+      attribution: '© Google',
+      maxZoom: 21,
+      maxNativeZoom: 21,
+    }
+  ),
+  hybrid: L.tileLayer(
+    'https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}',
+    {
+      subdomains: ['mt0','mt1','mt2','mt3'],
+      attribution: '© Google',
+      maxZoom: 21,
+      maxNativeZoom: 21,
+    }
   ),
   street: L.tileLayer(
     'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    { attribution: '© OpenStreetMap', maxZoom: 19 }
+    { attribution: '© OpenStreetMap', maxZoom: 21, maxNativeZoom: 19 }
   ),
 };
+
+// Ciclo tra i 3 layer: satellitare → ibrido (con strade) → stradale
+const layerOrder = ['satellite','hybrid','street'];
+const layerLabels = { satellite:'🛰', hybrid:'🛰+🗺', street:'🗺' };
+let currentLayerIdx = 0;
 layers.satellite.addTo(map);
 
 // Cerchio accuratezza GPS
@@ -500,16 +521,11 @@ document.getElementById('btn-center').addEventListener('click', () => {
 });
 
 document.getElementById('btn-satellite').addEventListener('click', () => {
-  if(STATE.isSatellite){
-    map.removeLayer(layers.satellite);
-    layers.street.addTo(map);
-    document.getElementById('btn-satellite').textContent = '🗺';
-  } else {
-    map.removeLayer(layers.street);
-    layers.satellite.addTo(map);
-    document.getElementById('btn-satellite').textContent = '🛰';
-  }
-  STATE.isSatellite = !STATE.isSatellite;
+  map.removeLayer(layers[layerOrder[currentLayerIdx]]);
+  currentLayerIdx = (currentLayerIdx + 1) % layerOrder.length;
+  const next = layerOrder[currentLayerIdx];
+  layers[next].addTo(map);
+  document.getElementById('btn-satellite').textContent = layerLabels[next];
 });
 
 document.getElementById('btn-undo-map').addEventListener('click', () => {
