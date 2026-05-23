@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Rilevatore GPS Ponti</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  :root {
+    --red:    #dc2626;
+    --blue:   #2563eb;
+    --yellow: #d97706;
+    --green:  #16a34a;
+    --bg:     #0f172a;
+    --panel:  #1e293b;
+    --border: #334155;
+    --text:   #f1f5f9;
+    --muted:  #94a3b8;
+  }
+
+  html, body { height: 100%; overflow: hidden; background: var(--bg); font-family: -apple-system, "SF Pro Display", sans-serif; }
+
+  /* ── LAYOUT ── */
+  #app { display: flex; flex-direction: column; height: 100vh; }
+
+  /* ── HEADER ── */
+  #header {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 14px;
+    display: flex; align-items: center; gap: 10px;
+    flex-shrink: 0; z-index: 1000;
+  }
+  #header h1 { font-size: 16px; font-weight: 700; color: var(--text); flex: 1; }
+  #gps-badge {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 12px; color: var(--muted);
+    background: #0f172a; border-radius: 20px;
+    padding: 4px 10px; border: 1px solid var(--border);
+  }
+  #gps-dot { width: 8px; height: 8px; border-radius: 50%; background: #475569; flex-shrink: 0; }
+  #gps-dot.acquiring { background: #f59e0b; animation: pulse 1s infinite; }
+  #gps-dot.fixed     { background: #22c55e; }
+  #gps-dot.precise   { background: #06b6d4; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  /* ── MAPPA ── */
+  #map { flex: 1; z-index: 1; }
+
+  /* ── PANNELLO INFERIORE ── */
+  #bottom {
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    padding: 12px 14px 20px;
+    flex-shrink: 0; z-index: 1000;
+  }
+
+  /* Tipo marker */
+  #type-bar {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+    margin-bottom: 12px;
+  }
+  .type-btn {
+    padding: 10px 6px; border-radius: 10px; border: 2px solid transparent;
+    font-size: 12px; font-weight: 700; color: white; cursor: pointer;
+    text-align: center; transition: transform .1s, opacity .15s;
+    opacity: .55; letter-spacing: .3px;
+  }
+  .type-btn.active { opacity: 1; border-color: white; transform: scale(1.04); }
+  .type-btn.red    { background: var(--red); }
+  .type-btn.blue   { background: var(--blue); }
+  .type-btn.yellow { background: var(--yellow); }
+  .type-btn.green  { background: var(--green); }
+
+  /* Riga azioni */
+  #action-row { display: flex; gap: 10px; align-items: center; }
+
+  #counter-box {
+    background: #0f172a; border: 1px solid var(--border); border-radius: 10px;
+    padding: 8px 14px; text-align: center; min-width: 60px; flex-shrink: 0;
+  }
+  #counter-box .lbl { font-size: 10px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
+  #counter-box .num { font-size: 28px; font-weight: 800; color: var(--text); line-height: 1.1; }
+
+  #btn-record {
+    flex: 1; padding: 16px; border-radius: 14px; border: none;
+    font-size: 17px; font-weight: 800; color: white; cursor: pointer;
+    background: var(--red); transition: transform .1s, filter .1s;
+    letter-spacing: .3px;
+  }
+  #btn-record:active { transform: scale(.97); filter: brightness(.9); }
+  #btn-record.blue   { background: var(--blue); }
+  #btn-record.yellow { background: var(--yellow); }
+  #btn-record.green  { background: var(--green); }
+
+  /* Nota input */
+  #nota-row {
+    margin-bottom: 10px; display: none;
+  }
+  #nota-row.visible { display: flex; gap: 8px; }
+  #nota-inp {
+    flex: 1; background: #0f172a; border: 1px solid var(--green);
+    border-radius: 10px; color: var(--text); font-size: 14px;
+    padding: 10px 14px; outline: none; font-family: inherit;
+  }
+  #nota-inp::placeholder { color: var(--muted); }
+
+  /* ── TOOLBAR MAPPA (bottoni overlay) ── */
+  #map-toolbar {
+    position: absolute; top: 14px; right: 14px;
+    display: flex; flex-direction: column; gap: 8px;
+    z-index: 500;
+  }
+  .map-btn {
+    width: 44px; height: 44px; border-radius: 10px;
+    background: var(--panel); border: 1px solid var(--border);
+    color: var(--text); font-size: 18px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,.4);
+  }
+  .map-btn:active { filter: brightness(.8); }
+
+  /* ── POPUP LISTA ── */
+  #list-panel {
+    position: fixed; inset: 0; z-index: 2000;
+    background: rgba(0,0,0,.7); display: none; align-items: flex-end;
+  }
+  #list-panel.open { display: flex; }
+  #list-inner {
+    background: var(--panel); border-radius: 20px 20px 0 0;
+    width: 100%; max-height: 70vh; overflow-y: auto;
+    padding: 0 0 30px;
+  }
+  #list-header {
+    padding: 16px 18px 12px; display: flex;
+    justify-content: space-between; align-items: center;
+    border-bottom: 1px solid var(--border); position: sticky; top: 0;
+    background: var(--panel);
+  }
+  #list-header h2 { font-size: 15px; color: var(--text); font-weight: 700; }
+  #list-close { background: none; border: none; color: var(--muted); font-size: 22px; cursor: pointer; }
+  .list-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 18px; border-bottom: 1px solid #1e293b;
+  }
+  .list-badge {
+    width: 34px; height: 34px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 800; color: white; flex-shrink: 0;
+  }
+  .list-badge.note-rect { border-radius: 8px; padding: 0 8px; width: auto; min-width: 34px; font-size: 11px; }
+  .list-info { flex: 1; min-width: 0; }
+  .list-title { font-size: 14px; color: var(--text); font-weight: 600; }
+  .list-coords { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .list-del { background: none; border: none; color: #475569; font-size: 20px; cursor: pointer; padding: 4px; }
+  .list-del:active { color: var(--red); }
+
+  /* ── MARKER LEAFLET CUSTOM ── */
+  .gps-marker-icon {
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%; border: 2.5px solid white;
+    color: white; font-weight: 800; font-size: 13px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.5);
+  }
+  .gps-marker-note {
+    border-radius: 6px; padding: 0 6px; height: auto !important;
+    font-size: 11px; white-space: nowrap; width: auto !important;
+  }
+
+  /* ── ACCURATEZZA CERCHIO ── */
+  .accuracy-info {
+    position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%);
+    font-size: 10px; color: rgba(255,255,255,.7); white-space: nowrap;
+    pointer-events: none; z-index: 400;
+    background: rgba(0,0,0,.4); border-radius: 10px; padding: 2px 8px;
+  }
+
+  /* ── TOAST ── */
+  #toast {
+    position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%);
+    background: #1e293b; border: 1px solid var(--border); border-radius: 12px;
+    padding: 10px 20px; font-size: 13px; color: var(--text);
+    z-index: 3000; opacity: 0; transition: opacity .3s;
+    pointer-events: none; white-space: nowrap;
+  }
+  #toast.show { opacity: 1; }
+
+  /* Leaflet overrides */
+  .leaflet-control-attribution { font-size: 9px !important; }
+  .leaflet-popup-content-wrapper {
+    background: var(--panel) !important; color: var(--text) !important;
+    border-radius: 10px !important; border: 1px solid var(--border) !important;
+    box-shadow: 0 4px 20px rgba(0,0,0,.5) !important;
+  }
+  .leaflet-popup-tip { background: var(--panel) !important; }
+  .leaflet-popup-content { font-size: 13px !important; line-height: 1.6 !important; margin: 10px 14px !important; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="header">
+    <h1>🌉 Rilevatore GPS Ponti</h1>
+    <div id="gps-badge">
+      <div id="gps-dot"></div>
+      <span id="gps-text">in attesa…</span>
+    </div>
+  </div>
+
+  <div id="map">
+    <div id="map-toolbar">
+      <button class="map-btn" id="btn-center" title="Centra su posizione">📍</button>
+      <button class="map-btn" id="btn-satellite" title="Cambia mappa">🛰</button>
+      <button class="map-btn" id="btn-list" title="Lista marker">📋</button>
+      <button class="map-btn" id="btn-export" title="Esporta GeoJSON">💾</button>
+      <button class="map-btn" id="btn-undo-map" title="Annulla ultimo">↩</button>
+    </div>
+    <div class="accuracy-info" id="acc-info"></div>
+  </div>
+
+  <div id="bottom">
+    <div id="type-bar">
+      <button class="type-btn red   active" data-color="red">▲ SOPRA</button>
+      <button class="type-btn blue"          data-color="blue">▼ SOTTO</button>
+      <button class="type-btn yellow"        data-color="yellow">▶ VIDEO</button>
+      <button class="type-btn green"         data-color="green">✎ NOTE</button>
+    </div>
+    <div id="nota-row">
+      <input id="nota-inp" type="text" placeholder="Scrivi nota…" autocomplete="off">
+    </div>
+    <div id="action-row">
+      <div id="counter-box">
+        <div class="lbl">n°</div>
+        <div class="num" id="counter-num">1</div>
+      </div>
+      <button id="btn-record">📷 Registra posizione SOPRA</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- Lista marker -->
+<div id="list-panel">
+  <div id="list-inner">
+    <div id="list-header">
+      <h2>Marker rilevati (<span id="list-count">0</span>)</h2>
+      <button id="list-close">×</button>
+    </div>
+    <div id="list-body"></div>
+    <div style="padding:14px 18px; display:flex; gap:10px">
+      <button id="btn-clear-all" style="flex:1;padding:10px;border-radius:10px;background:#7f1d1d;border:none;color:white;font-size:13px;font-weight:700;cursor:pointer">🗑 Cancella tutto</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════
+//  STATO
+// ═══════════════════════════════════════════════════
+const STATE = {
+  markers:     [],       // {id, n, color, nota, lat, lng, acc, ts}
+  nextId:      1,
+  nextNum:     1,
+  currentColor:'red',
+  gpsPos:      null,     // {lat, lng, accuracy}
+  watchId:     null,
+  isSatellite: true,
+};
+
+const COLOR_HEX   = {red:'#dc2626', blue:'#2563eb', yellow:'#d97706', green:'#16a34a'};
+const COLOR_LABEL = {red:'SOPRA',   blue:'SOTTO',   yellow:'VIDEO',  green:'NOTE'};
+
+// ═══════════════════════════════════════════════════
+//  MAPPA LEAFLET
+// ═══════════════════════════════════════════════════
+const map = L.map('map', {
+  zoomControl: false,
+  attributionControl: true,
+}).setView([45.07, 7.68], 16);
+
+// Layer satellitare (Esri) e stradale (OSM)
+const layers = {
+  satellite: L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    { attribution: 'Esri World Imagery', maxZoom: 20 }
+  ),
+  street: L.tileLayer(
+    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    { attribution: '© OpenStreetMap', maxZoom: 19 }
+  ),
+};
+layers.satellite.addTo(map);
+
+// Cerchio accuratezza GPS
+let accuracyCircle = null;
+let positionMarker = null;
+
+// ═══════════════════════════════════════════════════
+//  GPS
+// ═══════════════════════════════════════════════════
+const gpsDot  = document.getElementById('gps-dot');
+const gpsText = document.getElementById('gps-text');
+const accInfo = document.getElementById('acc-info');
+
+function startGPS(){
+  if(!navigator.geolocation){ gpsText.textContent='GPS non disponibile'; return; }
+  gpsDot.className = 'acquiring';
+  gpsText.textContent = 'acquisendo…';
+
+  STATE.watchId = navigator.geolocation.watchPosition(
+    onGPSSuccess, onGPSError,
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
+  );
+}
+
+function onGPSSuccess(pos){
+  const {latitude:lat, longitude:lng, accuracy:acc} = pos.coords;
+  STATE.gpsPos = {lat, lng, acc};
+
+  // Aggiorna badge
+  const accRound = acc < 1 ? acc.toFixed(2)+'m' : Math.round(acc)+'m';
+  gpsText.textContent = `±${accRound}`;
+  accInfo.textContent = `precisione GPS: ±${accRound}`;
+
+  if(acc <= 3){
+    gpsDot.className = 'precise';
+  } else if(acc <= 10){
+    gpsDot.className = 'fixed';
+  } else {
+    gpsDot.className = 'acquiring';
+  }
+
+  // Marker posizione corrente
+  if(!positionMarker){
+    positionMarker = L.circleMarker([lat,lng], {
+      radius: 8, color: 'white', weight: 2,
+      fillColor: '#3b82f6', fillOpacity: 1,
+    }).addTo(map);
+    map.setView([lat,lng], 18);
+  } else {
+    positionMarker.setLatLng([lat,lng]);
+  }
+
+  // Cerchio accuratezza
+  if(accuracyCircle) map.removeLayer(accuracyCircle);
+  accuracyCircle = L.circle([lat,lng], {
+    radius: acc,
+    color: '#3b82f6', weight: 1,
+    fillColor: '#3b82f6', fillOpacity: 0.08,
+  }).addTo(map);
+}
+
+function onGPSError(err){
+  gpsDot.className = '';
+  gpsText.textContent = 'errore GPS';
+  toast('⚠️ GPS: ' + err.message);
+}
+
+// ═══════════════════════════════════════════════════
+//  REGISTRA MARKER
+// ═══════════════════════════════════════════════════
+document.getElementById('btn-record').addEventListener('click', () => {
+  if(!STATE.gpsPos){
+    toast('⏳ GPS non ancora disponibile — attendi…'); return;
+  }
+
+  const color = STATE.currentColor;
+  const nota  = color === 'green'
+    ? document.getElementById('nota-inp').value.trim()
+    : '';
+
+  if(color === 'green' && !nota){
+    document.getElementById('nota-inp').focus();
+    toast('✎ Scrivi una nota prima di registrare'); return;
+  }
+
+  const m = {
+    id:    STATE.nextId++,
+    n:     STATE.nextNum++,
+    color,
+    nota,
+    lat:   STATE.gpsPos.lat,
+    lng:   STATE.gpsPos.lng,
+    acc:   STATE.gpsPos.acc,
+    ts:    new Date().toISOString(),
+  };
+
+  STATE.markers.push(m);
+  addLeafletMarker(m);
+  updateCounter();
+  updateListCount();
+
+  if(color === 'green'){
+    document.getElementById('nota-inp').value = '';
+  }
+
+  const accStr = m.acc < 1 ? m.acc.toFixed(2)+'m' : Math.round(m.acc)+'m';
+  toast(`✅ ${COLOR_LABEL[color]} n.${m.n} registrato (±${accStr})`);
+});
+
+// ═══════════════════════════════════════════════════
+//  MARKER LEAFLET
+// ═══════════════════════════════════════════════════
+const leafletMarkers = new Map(); // id → L.marker
+
+function addLeafletMarker(m){
+  const col = COLOR_HEX[m.color];
+  let icon;
+
+  if(m.color === 'green'){
+    const label = m.nota || '?';
+    icon = L.divIcon({
+      className: '',
+      html: `<div class="gps-marker-icon gps-marker-note" style="background:${col};padding:4px 8px;border-radius:6px;border:2px solid white;color:white;font-weight:800;font-size:11px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.5)">${escHtml(label)}</div>`,
+      iconAnchor: [0, 12],
+    });
+  } else {
+    const size = 32;
+    icon = L.divIcon({
+      className: '',
+      html: `<div class="gps-marker-icon" style="width:${size}px;height:${size}px;background:${col};font-size:13px">${m.n}</div>`,
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2],
+    });
+  }
+
+  const marker = L.marker([m.lat, m.lng], {icon})
+    .addTo(map)
+    .bindPopup(buildPopupHtml(m), {maxWidth: 260});
+
+  leafletMarkers.set(m.id, marker);
+}
+
+function buildPopupHtml(m){
+  const col   = COLOR_HEX[m.color];
+  const label = COLOR_LABEL[m.color];
+  const acc   = m.acc < 1 ? m.acc.toFixed(2)+'m' : Math.round(m.acc)+'m';
+  const ts    = new Date(m.ts).toLocaleString('it-IT');
+  const nota  = m.nota ? `<div style="margin-top:4px;color:#94a3b8">📝 ${escHtml(m.nota)}</div>` : '';
+  return `
+    <div style="font-family:-apple-system,sans-serif">
+      <div style="font-weight:800;font-size:15px;color:${col}">${label} n.${m.n}</div>
+      ${nota}
+      <div style="margin-top:6px;font-size:11px;color:#64748b">
+        📍 ${m.lat.toFixed(6)}, ${m.lng.toFixed(6)}<br>
+        🎯 Precisione: ±${acc}<br>
+        🕐 ${ts}
+      </div>
+    </div>`;
+}
+
+function escHtml(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ═══════════════════════════════════════════════════
+//  TIPO MARKER
+// ═══════════════════════════════════════════════════
+document.querySelectorAll('.type-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    STATE.currentColor = btn.dataset.color;
+    updateRecordBtn();
+    // Mostra/nasconde campo nota
+    const nr = document.getElementById('nota-row');
+    nr.classList.toggle('visible', STATE.currentColor === 'green');
+    if(STATE.currentColor === 'green') document.getElementById('nota-inp').focus();
+  });
+});
+
+function updateRecordBtn(){
+  const btn = document.getElementById('btn-record');
+  const col = STATE.currentColor;
+  btn.className = col === 'red' ? '' : col;
+  const emoji = {red:'📷', blue:'📷', yellow:'🎥', green:'✎'}[col];
+  btn.textContent = `${emoji} Registra ${COLOR_LABEL[col]}`;
+  btn.id = 'btn-record'; // preserva id
+}
+
+function updateCounter(){
+  document.getElementById('counter-num').textContent = STATE.nextNum;
+}
+
+// ═══════════════════════════════════════════════════
+//  TOOLBAR MAPPA
+// ═══════════════════════════════════════════════════
+document.getElementById('btn-center').addEventListener('click', () => {
+  if(STATE.gpsPos) map.setView([STATE.gpsPos.lat, STATE.gpsPos.lng], 19);
+  else toast('⏳ Posizione GPS non disponibile');
+});
+
+document.getElementById('btn-satellite').addEventListener('click', () => {
+  if(STATE.isSatellite){
+    map.removeLayer(layers.satellite);
+    layers.street.addTo(map);
+    document.getElementById('btn-satellite').textContent = '🗺';
+  } else {
+    map.removeLayer(layers.street);
+    layers.satellite.addTo(map);
+    document.getElementById('btn-satellite').textContent = '🛰';
+  }
+  STATE.isSatellite = !STATE.isSatellite;
+});
+
+document.getElementById('btn-undo-map').addEventListener('click', () => {
+  if(!STATE.markers.length){ toast('Nessun marker da annullare'); return; }
+  const last = STATE.markers.pop();
+  const lm = leafletMarkers.get(last.id);
+  if(lm) map.removeLayer(lm);
+  leafletMarkers.delete(last.id);
+  STATE.nextNum--;
+  updateCounter();
+  updateListCount();
+  toast(`↩ Annullato: ${COLOR_LABEL[last.color]} n.${last.n}`);
+});
+
+// ═══════════════════════════════════════════════════
+//  LISTA MARKER
+// ═══════════════════════════════════════════════════
+document.getElementById('btn-list').addEventListener('click', openList);
+document.getElementById('list-close').addEventListener('click', () => {
+  document.getElementById('list-panel').classList.remove('open');
+});
+document.getElementById('list-panel').addEventListener('click', e => {
+  if(e.target === document.getElementById('list-panel'))
+    document.getElementById('list-panel').classList.remove('open');
+});
+
+document.getElementById('btn-clear-all').addEventListener('click', () => {
+  if(!STATE.markers.length) return;
+  if(!confirm(`Eliminare tutti i ${STATE.markers.length} marker?`)) return;
+  STATE.markers.forEach(m => {
+    const lm = leafletMarkers.get(m.id); if(lm) map.removeLayer(lm);
+  });
+  leafletMarkers.clear();
+  STATE.markers = [];
+  STATE.nextNum = 1;
+  STATE.nextId  = 1;
+  updateCounter(); updateListCount();
+  document.getElementById('list-panel').classList.remove('open');
+  toast('🗑 Tutti i marker eliminati');
+});
+
+function openList(){
+  const body = document.getElementById('list-body');
+  body.innerHTML = '';
+  if(!STATE.markers.length){
+    body.innerHTML = '<div style="padding:20px;text-align:center;color:#64748b;font-size:13px">Nessun marker registrato.</div>';
+  } else {
+    STATE.markers.forEach(m => {
+      const col = COLOR_HEX[m.color];
+      const acc = m.acc < 1 ? m.acc.toFixed(2)+'m' : Math.round(m.acc)+'m';
+      const div = document.createElement('div');
+      div.className = 'list-item';
+      const isNote = m.color === 'green';
+      div.innerHTML = `
+        <div class="list-badge${isNote?' note-rect':''}" style="background:${col}">${isNote ? escHtml(m.nota||'?') : m.n}</div>
+        <div class="list-info">
+          <div class="list-title">${COLOR_LABEL[m.color]} n.${m.n}</div>
+          <div class="list-coords">📍 ${m.lat.toFixed(6)}, ${m.lng.toFixed(6)} · ±${acc}</div>
+        </div>
+        <button class="list-del" data-id="${m.id}">×</button>`;
+      div.querySelector('.list-badge').addEventListener('click', () => {
+        document.getElementById('list-panel').classList.remove('open');
+        map.setView([m.lat, m.lng], 19);
+        leafletMarkers.get(m.id)?.openPopup();
+      });
+      body.appendChild(div);
+    });
+  }
+  updateListCount();
+  document.getElementById('list-panel').classList.add('open');
+  // Listener elimina singolo
+  body.querySelectorAll('.list-del').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = parseInt(btn.dataset.id);
+      const idx = STATE.markers.findIndex(m => m.id === id);
+      if(idx >= 0) STATE.markers.splice(idx, 1);
+      const lm = leafletMarkers.get(id); if(lm) map.removeLayer(lm);
+      leafletMarkers.delete(id);
+      openList(); // ricarica lista
+      updateListCount();
+    });
+  });
+}
+
+function updateListCount(){
+  document.getElementById('list-count').textContent = STATE.markers.length;
+}
+
+// ═══════════════════════════════════════════════════
+//  EXPORT GEOJSON
+// ═══════════════════════════════════════════════════
+document.getElementById('btn-export').addEventListener('click', () => {
+  if(!STATE.markers.length){ toast('Nessun marker da esportare'); return; }
+
+  const geojson = {
+    type: 'FeatureCollection',
+    features: STATE.markers.map(m => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [m.lng, m.lat] },
+      properties: {
+        n:         m.n,
+        tipo:      COLOR_LABEL[m.color],
+        colore:    m.color,
+        nota:      m.nota || '',
+        precisione_m: parseFloat(m.acc.toFixed(3)),
+        timestamp: m.ts,
+        lat:       m.lat,
+        lng:       m.lng,
+      }
+    }))
+  };
+
+  const json = JSON.stringify(geojson, null, 2);
+  const blob = new Blob([json], {type: 'application/geo+json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  // Nome file con data
+  const now = new Date();
+  const d = [now.getFullYear(),
+    String(now.getMonth()+1).padStart(2,'0'),
+    String(now.getDate()).padStart(2,'0')].join('-');
+  a.download = `rilevamento_${d}.geojson`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast(`💾 Esportati ${STATE.markers.length} marker`);
+});
+
+// ═══════════════════════════════════════════════════
+//  TOAST
+// ═══════════════════════════════════════════════════
+let toastTimer = null;
+function toast(msg, dur=2500){
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), dur);
+}
+
+// ═══════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════
+startGPS();
+updateRecordBtn();
+updateCounter();
+</script>
+</body>
+</html>
