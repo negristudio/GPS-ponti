@@ -9,765 +9,603 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+* { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+:root {
+  --red:#dc2626; --blue:#2563eb; --yellow:#d97706; --green:#16a34a;
+  --bg:#0f172a; --panel:#1e293b; --border:#334155; --text:#f1f5f9; --muted:#94a3b8;
+}
+html,body { height:100%; overflow:hidden; background:var(--bg); font-family:-apple-system,"SF Pro Display",sans-serif; }
+#app { display:flex; flex-direction:column; height:100vh; }
+#header { background:var(--panel); border-bottom:1px solid var(--border); padding:8px 12px; display:flex; align-items:center; gap:8px; flex-shrink:0; z-index:1000; }
+#header h1 { font-size:15px; font-weight:700; color:var(--text); flex:1; }
+#size-ctrl { display:flex; align-items:center; gap:5px; background:#0f172a; border:1px solid var(--border); border-radius:16px; padding:3px 8px; }
+#size-ctrl span { font-size:10px; color:var(--muted); }
+#marker-size { width:60px; accent-color:#2563eb; cursor:pointer; }
+#gps-badge { display:flex; align-items:center; gap:5px; font-size:12px; color:var(--muted); background:#0f172a; border-radius:20px; padding:4px 8px; border:1px solid var(--border); white-space:nowrap; }
+#gps-dot { width:8px; height:8px; border-radius:50%; background:#475569; flex-shrink:0; }
+#gps-dot.acquiring { background:#f59e0b; animation:pulse 1s infinite; }
+#gps-dot.fixed     { background:#22c55e; }
+#gps-dot.precise   { background:#06b6d4; animation:pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
 
-  :root {
-    --red:    #dc2626;
-    --blue:   #2563eb;
-    --yellow: #d97706;
-    --green:  #16a34a;
-    --bg:     #0f172a;
-    --panel:  #1e293b;
-    --border: #334155;
-    --text:   #f1f5f9;
-    --muted:  #94a3b8;
-  }
+/* BARRA PRECISIONE */
+#gps-bar { background:#1e293b; border-bottom:1px solid #334155; padding:6px 14px; align-items:center; gap:10px; flex-shrink:0; display:none; }
+#gps-bar.on { display:flex; }
+#gps-quality-label { font-size:11px; font-weight:700; padding:3px 8px; border-radius:8px; white-space:nowrap; background:#334155; color:var(--muted); }
 
-  html, body { height: 100%; overflow: hidden; background: var(--bg); font-family: -apple-system, "SF Pro Display", sans-serif; }
+/* MAPPA */
+#map { flex:1; z-index:1; }
+#map-toolbar { position:absolute; top:12px; right:12px; display:flex; flex-direction:column; gap:7px; z-index:500; }
+.map-btn { width:42px; height:42px; border-radius:10px; background:var(--panel); border:1px solid var(--border); color:var(--text); font-size:17px; cursor:pointer; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 8px rgba(0,0,0,.4); }
+.map-btn:active { filter:brightness(.8); }
+#acc-info { position:absolute; bottom:2px; left:50%; transform:translateX(-50%); font-size:10px; color:rgba(255,255,255,.7); pointer-events:none; z-index:400; background:rgba(0,0,0,.4); border-radius:10px; padding:2px 8px; white-space:nowrap; }
 
-  /* ── LAYOUT ── */
-  #app { display: flex; flex-direction: column; height: 100vh; }
+/* PANNELLO INFERIORE */
+#bottom { background:var(--panel); border-top:1px solid var(--border); padding:8px 12px 16px; flex-shrink:0; z-index:1000; }
+#type-bar { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-bottom:7px; }
+.type-btn { padding:9px 4px; border-radius:10px; border:2px solid transparent; font-size:11px; font-weight:700; color:white; cursor:pointer; text-align:center; opacity:.55; transition:transform .1s,opacity .15s; }
+.type-btn.active { opacity:1; border-color:white; transform:scale(1.04); }
+.type-btn.red    { background:var(--red); }
+.type-btn.blue   { background:var(--blue); }
+.type-btn.yellow { background:var(--yellow); }
+.type-btn.green  { background:var(--green); }
 
-  /* ── HEADER ── */
-  #header {
-    background: var(--panel);
-    border-bottom: 1px solid var(--border);
-    padding: 10px 14px;
-    display: flex; align-items: center; gap: 10px;
-    flex-shrink: 0; z-index: 1000;
-  }
-  #header h1 { font-size: 16px; font-weight: 700; color: var(--text); flex: 1; }
-  #gps-badge {
-    display: flex; align-items: center; gap: 5px;
-    font-size: 12px; color: var(--muted);
-    background: #0f172a; border-radius: 20px;
-    padding: 4px 10px; border: 1px solid var(--border);
-  }
-  #gps-dot { width: 8px; height: 8px; border-radius: 50%; background: #475569; flex-shrink: 0; }
-  #gps-dot.acquiring { background: #f59e0b; animation: pulse 1s infinite; }
-  #gps-dot.fixed     { background: #22c55e; }
-  #gps-dot.precise   { background: #06b6d4; animation: pulse 2s infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+#descr-row { margin-bottom:6px; }
+#descr-inp { width:100%; background:#0f172a; border:1px solid #2563eb; border-radius:10px; color:var(--text); font-size:14px; padding:9px 12px; outline:none; font-family:inherit; }
+#descr-inp::placeholder { color:var(--muted); }
+#nota-row { margin-bottom:6px; display:none; }
+#nota-row.on { display:flex; }
+#nota-inp { flex:1; background:#0f172a; border:1px solid var(--green); border-radius:10px; color:var(--text); font-size:14px; padding:9px 12px; outline:none; font-family:inherit; }
+#nota-inp::placeholder { color:var(--muted); }
 
-  /* ── MAPPA ── */
-  #map { flex: 1; z-index: 1; }
+/* BARRA MEDIA GPS */
+#avg-row { margin-bottom:6px; display:none; }
+#avg-row.on { display:block; }
+#avg-box { background:#0f172a; border:1px solid #2563eb; border-radius:10px; padding:8px 12px; }
+#avg-progress-wrap { height:5px; background:#1e293b; border-radius:3px; overflow:hidden; margin:4px 0; }
+#avg-progress-fill { height:100%; background:#2563eb; border-radius:3px; width:0%; transition:width .3s; }
 
-  /* ── PANNELLO INFERIORE ── */
-  #bottom {
-    background: var(--panel);
-    border-top: 1px solid var(--border);
-    padding: 12px 14px 20px;
-    flex-shrink: 0; z-index: 1000;
-  }
+#action-row { display:flex; gap:7px; align-items:center; margin-bottom:6px; }
+#counter-box { background:#0f172a; border:1px solid var(--border); border-radius:10px; padding:6px 10px; text-align:center; min-width:50px; flex-shrink:0; }
+#counter-box .lbl { font-size:9px; color:var(--muted); letter-spacing:1px; text-transform:uppercase; }
+#counter-box .num { font-size:24px; font-weight:800; color:var(--text); line-height:1.1; }
+#btn-record { flex:1; padding:13px; border-radius:12px; border:none; font-size:14px; font-weight:800; color:white; cursor:pointer; background:var(--red); transition:transform .1s,filter .1s; }
+#btn-record:active { transform:scale(.97); filter:brightness(.9); }
+#btn-record.blue   { background:var(--blue); }
+#btn-record.yellow { background:var(--yellow); }
+#btn-record.green  { background:var(--green); }
 
-  /* Tipo marker */
-  #type-bar {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
-    margin-bottom: 12px;
-  }
-  .type-btn {
-    padding: 10px 6px; border-radius: 10px; border: 2px solid transparent;
-    font-size: 12px; font-weight: 700; color: white; cursor: pointer;
-    text-align: center; transition: transform .1s, opacity .15s;
-    opacity: .55; letter-spacing: .3px;
-  }
-  .type-btn.active { opacity: 1; border-color: white; transform: scale(1.04); }
-  .type-btn.red    { background: var(--red); }
-  .type-btn.blue   { background: var(--blue); }
-  .type-btn.yellow { background: var(--yellow); }
-  .type-btn.green  { background: var(--green); }
+#avg-btns { display:flex; gap:6px; }
+#btn-avg { flex:1; padding:9px; border-radius:10px; border:1px solid #2563eb; background:transparent; color:#60a5fa; font-size:12px; font-weight:700; cursor:pointer; }
+#btn-avg-cfg { padding:9px 11px; border-radius:10px; border:1px solid var(--border); background:transparent; color:var(--muted); font-size:13px; cursor:pointer; }
 
-  /* Riga azioni */
-  #action-row { display: flex; gap: 10px; align-items: center; }
+/* LISTA */
+#list-panel { position:fixed; inset:0; z-index:2000; background:rgba(0,0,0,.7); display:none; align-items:flex-end; }
+#list-panel.open { display:flex; }
+#list-inner { background:var(--panel); border-radius:20px 20px 0 0; width:100%; max-height:70vh; overflow-y:auto; padding-bottom:24px; }
+#list-header { padding:14px 16px 10px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--panel); }
+#list-header h2 { font-size:14px; color:var(--text); font-weight:700; }
+#list-close { background:none; border:none; color:var(--muted); font-size:22px; cursor:pointer; }
+.list-item { display:flex; align-items:center; gap:10px; padding:10px 16px; border-bottom:1px solid #1e293b; }
+.list-badge { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; color:white; flex-shrink:0; }
+.list-badge.nr { border-radius:7px; padding:0 7px; width:auto; min-width:32px; font-size:10px; }
+.list-info { flex:1; min-width:0; }
+.list-title { font-size:13px; color:var(--text); font-weight:600; }
+.list-sub { font-size:10px; color:var(--muted); margin-top:1px; }
+.list-del { background:none; border:none; color:#475569; font-size:18px; cursor:pointer; padding:3px; }
+.list-del:active { color:var(--red); }
 
-  #counter-box {
-    background: #0f172a; border: 1px solid var(--border); border-radius: 10px;
-    padding: 8px 14px; text-align: center; min-width: 60px; flex-shrink: 0;
-  }
-  #counter-box .lbl { font-size: 10px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
-  #counter-box .num { font-size: 28px; font-weight: 800; color: var(--text); line-height: 1.1; }
+/* TOAST */
+#toast { position:fixed; bottom:100px; left:50%; transform:translateX(-50%); background:#1e293b; border:1px solid var(--border); border-radius:12px; padding:9px 18px; font-size:13px; color:var(--text); z-index:3000; opacity:0; transition:opacity .3s; pointer-events:none; white-space:nowrap; }
+#toast.show { opacity:1; }
 
-  #btn-record {
-    flex: 1; padding: 16px; border-radius: 14px; border: none;
-    font-size: 17px; font-weight: 800; color: white; cursor: pointer;
-    background: var(--red); transition: transform .1s, filter .1s;
-    letter-spacing: .3px;
-  }
-  #btn-record:active { transform: scale(.97); filter: brightness(.9); }
-  #btn-record.blue   { background: var(--blue); }
-  #btn-record.yellow { background: var(--yellow); }
-  #btn-record.green  { background: var(--green); }
-
-  /* Nota input */
-  #nota-row {
-    margin-bottom: 10px; display: none;
-  }
-  #nota-row.visible { display: flex; gap: 8px; }
-  #nota-inp {
-    flex: 1; background: #0f172a; border: 1px solid var(--green);
-    border-radius: 10px; color: var(--text); font-size: 14px;
-    padding: 10px 14px; outline: none; font-family: inherit;
-  }
-  #nota-inp::placeholder { color: var(--muted); }
-
-  /* ── TOOLBAR MAPPA (bottoni overlay) ── */
-  #map-toolbar {
-    position: absolute; top: 14px; right: 14px;
-    display: flex; flex-direction: column; gap: 8px;
-    z-index: 500;
-  }
-  .map-btn {
-    width: 44px; height: 44px; border-radius: 10px;
-    background: var(--panel); border: 1px solid var(--border);
-    color: var(--text); font-size: 18px; cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 2px 8px rgba(0,0,0,.4);
-  }
-  .map-btn:active { filter: brightness(.8); }
-
-  /* ── POPUP LISTA ── */
-  #list-panel {
-    position: fixed; inset: 0; z-index: 2000;
-    background: rgba(0,0,0,.7); display: none; align-items: flex-end;
-  }
-  #list-panel.open { display: flex; }
-  #list-inner {
-    background: var(--panel); border-radius: 20px 20px 0 0;
-    width: 100%; max-height: 70vh; overflow-y: auto;
-    padding: 0 0 30px;
-  }
-  #list-header {
-    padding: 16px 18px 12px; display: flex;
-    justify-content: space-between; align-items: center;
-    border-bottom: 1px solid var(--border); position: sticky; top: 0;
-    background: var(--panel);
-  }
-  #list-header h2 { font-size: 15px; color: var(--text); font-weight: 700; }
-  #list-close { background: none; border: none; color: var(--muted); font-size: 22px; cursor: pointer; }
-  .list-item {
-    display: flex; align-items: center; gap: 12px;
-    padding: 12px 18px; border-bottom: 1px solid #1e293b;
-  }
-  .list-badge {
-    width: 34px; height: 34px; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 13px; font-weight: 800; color: white; flex-shrink: 0;
-  }
-  .list-badge.note-rect { border-radius: 8px; padding: 0 8px; width: auto; min-width: 34px; font-size: 11px; }
-  .list-info { flex: 1; min-width: 0; }
-  .list-title { font-size: 14px; color: var(--text); font-weight: 600; }
-  .list-coords { font-size: 11px; color: var(--muted); margin-top: 2px; }
-  .list-del { background: none; border: none; color: #475569; font-size: 20px; cursor: pointer; padding: 4px; }
-  .list-del:active { color: var(--red); }
-
-  /* ── MARKER LEAFLET CUSTOM ── */
-  .gps-marker-icon {
-    display: flex; align-items: center; justify-content: center;
-    border-radius: 50%; border: 2.5px solid white;
-    color: white; font-weight: 800; font-size: 13px;
-    box-shadow: 0 2px 8px rgba(0,0,0,.5);
-  }
-  .gps-marker-note {
-    border-radius: 6px; padding: 0 6px; height: auto !important;
-    font-size: 11px; white-space: nowrap; width: auto !important;
-  }
-
-  /* ── ACCURATEZZA CERCHIO ── */
-  .accuracy-info {
-    position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%);
-    font-size: 10px; color: rgba(255,255,255,.7); white-space: nowrap;
-    pointer-events: none; z-index: 400;
-    background: rgba(0,0,0,.4); border-radius: 10px; padding: 2px 8px;
-  }
-
-  /* ── TOAST ── */
-  #toast {
-    position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%);
-    background: #1e293b; border: 1px solid var(--border); border-radius: 12px;
-    padding: 10px 20px; font-size: 13px; color: var(--text);
-    z-index: 3000; opacity: 0; transition: opacity .3s;
-    pointer-events: none; white-space: nowrap;
-  }
-  #toast.show { opacity: 1; }
-
-  /* Leaflet overrides */
-  .leaflet-control-attribution { font-size: 9px !important; }
-  .leaflet-popup-content-wrapper {
-    background: var(--panel) !important; color: var(--text) !important;
-    border-radius: 10px !important; border: 1px solid var(--border) !important;
-    box-shadow: 0 4px 20px rgba(0,0,0,.5) !important;
-  }
-  .leaflet-popup-tip { background: var(--panel) !important; }
-  .leaflet-popup-content { font-size: 13px !important; line-height: 1.6 !important; margin: 10px 14px !important; }
+.leaflet-control-attribution { font-size:9px !important; }
+.leaflet-popup-content-wrapper { background:var(--panel) !important; color:var(--text) !important; border-radius:10px !important; border:1px solid var(--border) !important; box-shadow:0 4px 20px rgba(0,0,0,.5) !important; }
+.leaflet-popup-tip { background:var(--panel) !important; }
+.leaflet-popup-content { font-size:12px !important; line-height:1.6 !important; margin:10px 12px !important; }
 </style>
 </head>
 <body>
 <div id="app">
-
   <div id="header">
-    <h1>🌉 Rilevatore GPS Ponti</h1>
-    <div id="size-ctrl" style="display:flex;align-items:center;gap:6px;background:#0f172a;border:1px solid #334155;border-radius:20px;padding:4px 10px">
-      <span style="font-size:11px;color:#94a3b8">⬤</span>
-      <input type="range" id="marker-size" min="16" max="60" value="32"
-        style="width:70px;accent-color:#2563eb;cursor:pointer">
+    <h1>🌉 GPS Ponti</h1>
+    <div id="size-ctrl"><span>⬤</span><input type="range" id="marker-size" min="16" max="60" value="32"></div>
+    <div id="gps-badge"><div id="gps-dot"></div><span id="gps-text">in attesa…</span></div>
+  </div>
+
+  <!-- Barra precisione GPS -->
+  <div id="gps-bar">
+    <div style="flex:1">
+      <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+        <span style="font-size:11px;color:#94a3b8">Precisione GPS</span>
+        <span id="gps-acc-val" style="font-size:11px;font-weight:700;color:#f1f5f9"></span>
+      </div>
+      <div style="height:6px;background:#0f172a;border-radius:3px;overflow:hidden">
+        <div id="gps-acc-fill" style="height:100%;border-radius:3px;transition:width .5s,background .5s;width:0%"></div>
+      </div>
     </div>
-    <div id="gps-badge">
-      <div id="gps-dot"></div>
-      <span id="gps-text">in attesa…</span>
-    </div>
+    <div id="gps-quality-label">—</div>
   </div>
 
   <div id="map">
     <div id="map-toolbar">
-      <button class="map-btn" id="btn-center" title="Centra su posizione">📍</button>
-      <button class="map-btn" id="btn-satellite" title="Cambia mappa">🛰</button>
-      <button class="map-btn" id="btn-list" title="Lista marker">📋</button>
-      <button class="map-btn" id="btn-export" title="Esporta GeoJSON">💾</button>
-      <button class="map-btn" id="btn-undo-map" title="Annulla ultimo">↩</button>
-      <button class="map-btn" id="btn-screenshot" title="Salva JPG mappa">📸</button>
-      <button class="map-btn" id="btn-txt" title="Esporta TXT">📝</button>
+      <button class="map-btn" id="btn-center">📍</button>
+      <button class="map-btn" id="btn-satellite">🛰</button>
+      <button class="map-btn" id="btn-list">📋</button>
+      <button class="map-btn" id="btn-export">💾</button>
+      <button class="map-btn" id="btn-txt">📝</button>
+      <button class="map-btn" id="btn-screenshot">📸</button>
+      <button class="map-btn" id="btn-undo-map">↩</button>
     </div>
-    <div class="accuracy-info" id="acc-info"></div>
+    <div id="acc-info"></div>
   </div>
 
   <div id="bottom">
     <div id="type-bar">
-      <button class="type-btn red   active" data-color="red">▲ SOPRA</button>
-      <button class="type-btn blue"          data-color="blue">▼ SOTTO</button>
-      <button class="type-btn yellow"        data-color="yellow">▶ VIDEO</button>
-      <button class="type-btn green"         data-color="green">✎ NOTE</button>
+      <button class="type-btn red active" data-color="red">▲ SOPRA</button>
+      <button class="type-btn blue"       data-color="blue">▼ SOTTO</button>
+      <button class="type-btn yellow"     data-color="yellow">▶ VIDEO</button>
+      <button class="type-btn green"      data-color="green">✎ NOTE</button>
     </div>
-    <div id="descr-row" style="margin-bottom:8px;display:none">
-      <input id="descr-inp" type="text" autocomplete="off"
-        style="flex:1;width:100%;background:#0f172a;border:1px solid #2563eb;border-radius:10px;
-               color:#f1f5f9;font-size:14px;padding:10px 14px;outline:none;font-family:inherit"
-        placeholder="Descrizione foto (o usa il microfono 🎤)…">
+
+    <div id="descr-row">
+      <input id="descr-inp" type="text" autocomplete="off" placeholder="Descrizione foto (o usa 🎤 dettatura)…">
     </div>
     <div id="nota-row">
-      <input id="nota-inp" type="text" placeholder="Scrivi nota…" autocomplete="off">
+      <input id="nota-inp" type="text" autocomplete="off" placeholder="Nota…">
     </div>
+
+    <!-- Barra media GPS -->
+    <div id="avg-row">
+      <div id="avg-box">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:12px;color:#94a3b8">Media GPS in corso — rimani fermo!</span>
+          <span id="avg-countdown" style="font-size:14px;font-weight:800;color:#2563eb">30s</span>
+        </div>
+        <div id="avg-progress-wrap"><div id="avg-progress-fill"></div></div>
+        <div id="avg-stats" style="font-size:11px;color:#64748b">Campioni: 0 · Precisione: —</div>
+      </div>
+    </div>
+
     <div id="action-row">
       <div id="counter-box">
         <div class="lbl">n°</div>
         <div class="num" id="counter-num">1</div>
       </div>
-      <button id="btn-record">📷 Registra posizione SOPRA</button>
+      <button id="btn-record">📷 Registra SOPRA</button>
+    </div>
+
+    <div id="avg-btns">
+      <button id="btn-avg">⏱ Media 30s</button>
+      <button id="btn-avg-cfg">⚙️</button>
     </div>
   </div>
-
 </div>
 
 <!-- Lista marker -->
 <div id="list-panel">
   <div id="list-inner">
     <div id="list-header">
-      <h2>Marker rilevati (<span id="list-count">0</span>)</h2>
+      <h2>Marker (<span id="list-count">0</span>)</h2>
       <button id="list-close">×</button>
     </div>
     <div id="list-body"></div>
-    <div style="padding:14px 18px; display:flex; gap:10px">
-      <button id="btn-clear-all" style="flex:1;padding:10px;border-radius:10px;background:#7f1d1d;border:none;color:white;font-size:13px;font-weight:700;cursor:pointer">🗑 Cancella tutto</button>
+    <div style="padding:12px 16px">
+      <button id="btn-clear-all" style="width:100%;padding:9px;border-radius:10px;background:#7f1d1d;border:none;color:white;font-size:13px;font-weight:700;cursor:pointer">🗑 Cancella tutto</button>
     </div>
   </div>
 </div>
-
 <div id="toast"></div>
 
 <script>
 'use strict';
 
-// ═══════════════════════════════════════════════════
-//  STATO
-// ═══════════════════════════════════════════════════
 const STATE = {
-  markers:     [],       // {id, n, color, nota, lat, lng, acc, ts}
-  nextId:      1,
-  nextNum:     1,
-  currentColor:'red',
-  gpsPos:      null,     // {lat, lng, accuracy}
-  watchId:     null,
-  isSatellite: true,
+  markers:[], nextId:1, nextNum:1,
+  currentColor:'red', gpsPos:null, watchId:null,
+  layerIdx:0, markerSize:32,
+  // averaging
+  avgDuration:30, avgActive:false,
+  avgSamples:[], avgTimer:null, avgInterval:null,
+  avgColor:'red', avgNota:'', avgDescr:'',
 };
 
-const COLOR_HEX   = {red:'#dc2626', blue:'#2563eb', yellow:'#d97706', green:'#16a34a'};
-const COLOR_LABEL = {red:'SOPRA',   blue:'SOTTO',   yellow:'VIDEO',  green:'NOTE'};
+const COLOR_HEX   = {red:'#dc2626',blue:'#2563eb',yellow:'#d97706',green:'#16a34a'};
+const COLOR_LABEL = {red:'SOPRA',blue:'SOTTO',yellow:'VIDEO',green:'NOTE'};
 
-// ═══════════════════════════════════════════════════
-//  MAPPA LEAFLET
-// ═══════════════════════════════════════════════════
-const map = L.map('map', {
-  zoomControl: false,
-  attributionControl: true,
-  maxZoom: 21,
-}).setView([45.07, 7.68], 16);
+// ── MAPPA ──
+const map = L.map('map',{zoomControl:false,attributionControl:true,maxZoom:21}).setView([45.07,7.68],16);
 
-// Layer satellitari in ordine di qualità/zoom
-// Google Satellite: zoom fino a 21, massima risoluzione
-const layers = {
-  satellite: L.tileLayer(
-    'https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
-    {
-      subdomains: ['mt0','mt1','mt2','mt3'],
-      attribution: '© Google',
-      maxZoom: 21,
-      maxNativeZoom: 21,
-    }
-  ),
-  hybrid: L.tileLayer(
-    'https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}',
-    {
-      subdomains: ['mt0','mt1','mt2','mt3'],
-      attribution: '© Google',
-      maxZoom: 21,
-      maxNativeZoom: 21,
-    }
-  ),
-  street: L.tileLayer(
-    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    { attribution: '© OpenStreetMap', maxZoom: 21, maxNativeZoom: 19 }
-  ),
-};
+const layerDefs = [
+  {label:'🛰',  url:'https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',   opts:{subdomains:['mt0','mt1','mt2','mt3'],attribution:'© Google',maxZoom:21,maxNativeZoom:21}},
+  {label:'🛰+', url:'https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', opts:{subdomains:['mt0','mt1','mt2','mt3'],attribution:'© Google',maxZoom:21,maxNativeZoom:21}},
+  {label:'🗺',  url:'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',     opts:{attribution:'© OSM',maxZoom:21,maxNativeZoom:19}},
+];
+const layers = layerDefs.map(d=>L.tileLayer(d.url,d.opts));
+layers[0].addTo(map);
 
-// Ciclo tra i 3 layer: satellitare → ibrido (con strade) → stradale
-const layerOrder = ['satellite','hybrid','street'];
-const layerLabels = { satellite:'🛰', hybrid:'🛰+🗺', street:'🗺' };
-let currentLayerIdx = 0;
-layers.satellite.addTo(map);
+let accuracyCircle=null, positionMarker=null;
 
-// Cerchio accuratezza GPS
-let accuracyCircle = null;
-let positionMarker = null;
-
-// ═══════════════════════════════════════════════════
-//  GPS
-// ═══════════════════════════════════════════════════
-const gpsDot  = document.getElementById('gps-dot');
-const gpsText = document.getElementById('gps-text');
-const accInfo = document.getElementById('acc-info');
-
+// ── GPS ──
 function startGPS(){
-  if(!navigator.geolocation){ gpsText.textContent='GPS non disponibile'; return; }
-  gpsDot.className = 'acquiring';
-  gpsText.textContent = 'acquisendo…';
-
-  STATE.watchId = navigator.geolocation.watchPosition(
-    onGPSSuccess, onGPSError,
-    { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
-  );
+  if(!navigator.geolocation){document.getElementById('gps-text').textContent='Non disponibile';return;}
+  document.getElementById('gps-dot').className='acquiring';
+  document.getElementById('gps-text').textContent='acquisendo…';
+  STATE.watchId=navigator.geolocation.watchPosition(onGPSSuccess,onGPSError,{enableHighAccuracy:true,maximumAge:0,timeout:15000});
 }
 
 function onGPSSuccess(pos){
-  const {latitude:lat, longitude:lng, accuracy:acc} = pos.coords;
-  STATE.gpsPos = {lat, lng, acc};
-
-  // Aggiorna badge
-  const accRound = acc < 1 ? acc.toFixed(2)+'m' : Math.round(acc)+'m';
-  gpsText.textContent = `±${accRound}`;
-  accInfo.textContent = `precisione GPS: ±${accRound}`;
-
-  if(acc <= 3){
-    gpsDot.className = 'precise';
-  } else if(acc <= 10){
-    gpsDot.className = 'fixed';
-  } else {
-    gpsDot.className = 'acquiring';
-  }
-
-  // Marker posizione corrente
+  const {latitude:lat,longitude:lng,accuracy:acc}=pos.coords;
+  STATE.gpsPos={lat,lng,acc};
+  const as=acc<1?acc.toFixed(2)+'m':Math.round(acc)+'m';
+  document.getElementById('gps-text').textContent=`±${as}`;
+  document.getElementById('acc-info').textContent=`GPS ±${as}`;
+  document.getElementById('gps-dot').className=acc<=3?'precise':acc<=10?'fixed':'acquiring';
+  updateGPSBar(acc);
   if(!positionMarker){
-    positionMarker = L.circleMarker([lat,lng], {
-      radius: 8, color: 'white', weight: 2,
-      fillColor: '#3b82f6', fillOpacity: 1,
-    }).addTo(map);
-    map.setView([lat,lng], 18);
-  } else {
-    positionMarker.setLatLng([lat,lng]);
-  }
-
-  // Cerchio accuratezza
+    positionMarker=L.circleMarker([lat,lng],{radius:8,color:'white',weight:2,fillColor:'#3b82f6',fillOpacity:1}).addTo(map);
+    map.setView([lat,lng],18);
+  } else positionMarker.setLatLng([lat,lng]);
   if(accuracyCircle) map.removeLayer(accuracyCircle);
-  accuracyCircle = L.circle([lat,lng], {
-    radius: acc,
-    color: '#3b82f6', weight: 1,
-    fillColor: '#3b82f6', fillOpacity: 0.08,
-  }).addTo(map);
+  accuracyCircle=L.circle([lat,lng],{radius:acc,color:'#3b82f6',weight:1,fillColor:'#3b82f6',fillOpacity:0.08}).addTo(map);
 }
 
 function onGPSError(err){
-  gpsDot.className = '';
-  gpsText.textContent = 'errore GPS';
-  toast('⚠️ GPS: ' + err.message);
+  document.getElementById('gps-dot').className='';
+  document.getElementById('gps-text').textContent='errore GPS';
+  toast('⚠️ GPS: '+err.message);
 }
 
-// ═══════════════════════════════════════════════════
-//  REGISTRA MARKER
-// ═══════════════════════════════════════════════════
-document.getElementById('btn-record').addEventListener('click', () => {
-  if(!STATE.gpsPos){
-    toast('⏳ GPS non ancora disponibile — attendi…'); return;
-  }
+// ── BARRA PRECISIONE ──
+function updateGPSBar(acc){
+  const bar=document.getElementById('gps-bar');
+  bar.classList.add('on');
+  document.getElementById('gps-acc-val').textContent=acc<1?`±${acc.toFixed(2)} m`:`±${Math.round(acc)} m`;
+  let pct,col,bg,txt;
+  if     (acc<=2) {pct=100;col='#22c55e';bg='#14532d';txt='🔵 Eccellente — registra!';}
+  else if(acc<=5) {pct=80; col='#86efac';bg='#166534';txt='🟢 Ottima';}
+  else if(acc<=10){pct=55; col='#fbbf24';bg='#713f12';txt='🟡 Buona';}
+  else if(acc<=20){pct=30; col='#f97316';bg='#7c2d12';txt='🟠 Scarsa — aspetta';}
+  else            {pct=10; col='#ef4444';bg='#7f1d1d';txt='🔴 Insufficiente';}
+  const fill=document.getElementById('gps-acc-fill');
+  fill.style.width=pct+'%'; fill.style.background=col;
+  const lbl=document.getElementById('gps-quality-label');
+  lbl.textContent=txt; lbl.style.background=bg; lbl.style.color=col;
+}
 
-  const color = STATE.currentColor;
-  const nota  = color === 'green'
-    ? document.getElementById('nota-inp').value.trim()
-    : '';
-  const descr = document.getElementById('descr-inp').value.trim();
-
-  if(color === 'green' && !nota){
-    document.getElementById('nota-inp').focus();
-    toast('✎ Scrivi una nota prima di registrare'); return;
-  }
-
-  const m = {
-    id:    STATE.nextId++,
-    n:     STATE.nextNum++,
-    color,
-    nota,
-    descr,
-    lat:   STATE.gpsPos.lat,
-    lng:   STATE.gpsPos.lng,
-    acc:   STATE.gpsPos.acc,
-    ts:    new Date().toISOString(),
-  };
-
-  STATE.markers.push(m);
-  addLeafletMarker(m);
-  updateCounter();
-  updateListCount();
-
-  if(color === 'green'){
-    document.getElementById('nota-inp').value = '';
-  }
-  document.getElementById('descr-inp').value = '';
-
-  const accStr = m.acc < 1 ? m.acc.toFixed(2)+'m' : Math.round(m.acc)+'m';
-  toast(`✅ ${COLOR_LABEL[color]} n.${m.n} registrato (±${accStr})`);
+// ── REGISTRA (istantaneo) ──
+document.getElementById('btn-record').addEventListener('click',()=>{
+  if(!STATE.gpsPos){toast('⏳ GPS non disponibile — attendi…');return;}
+  const color=STATE.currentColor;
+  const nota=color==='green'?document.getElementById('nota-inp').value.trim():'';
+  const descr=document.getElementById('descr-inp').value.trim();
+  if(color==='green'&&!nota){document.getElementById('nota-inp').focus();toast('✎ Scrivi una nota prima di registrare');return;}
+  const m={id:STATE.nextId++,n:STATE.nextNum++,color,nota,descr,
+    lat:STATE.gpsPos.lat,lng:STATE.gpsPos.lng,acc:STATE.gpsPos.acc,
+    ts:new Date().toISOString(),manuale:false,averaged:false};
+  STATE.markers.push(m); addLeafletMarker(m);
+  updateCounter(); updateListCount();
+  if(color==='green') document.getElementById('nota-inp').value='';
+  document.getElementById('descr-inp').value='';
+  const as=m.acc<1?m.acc.toFixed(2)+'m':Math.round(m.acc)+'m';
+  toast(`✅ ${COLOR_LABEL[color]} n.${m.n} — ±${as}`);
 });
 
-// ═══════════════════════════════════════════════════
-//  MARKER LEAFLET
-// ═══════════════════════════════════════════════════
-const leafletMarkers = new Map(); // id → L.marker
+// ── MEDIA GPS ──
+document.getElementById('btn-avg').addEventListener('click',()=>{
+  if(STATE.avgActive){stopAvg(false);return;}
+  if(!STATE.gpsPos){toast('⏳ GPS non disponibile — attendi…');return;}
+  const color=STATE.currentColor;
+  const nota=color==='green'?document.getElementById('nota-inp').value.trim():'';
+  const descr=document.getElementById('descr-inp').value.trim();
+  if(color==='green'&&!nota){document.getElementById('nota-inp').focus();toast('✎ Scrivi una nota prima');return;}
+  STATE.avgActive=true; STATE.avgSamples=[];
+  STATE.avgColor=color; STATE.avgNota=nota; STATE.avgDescr=descr;
+  const dur=STATE.avgDuration; const start=Date.now();
+  const row=document.getElementById('avg-row'); row.classList.add('on');
+  const btnAvg=document.getElementById('btn-avg');
+  btnAvg.textContent='⏹ Annulla'; btnAvg.style.color='#ef4444'; btnAvg.style.borderColor='#ef4444';
+  STATE.avgInterval=setInterval(()=>{
+    if(STATE.gpsPos) STATE.avgSamples.push({...STATE.gpsPos});
+    const elapsed=(Date.now()-start)/1000;
+    const pct=Math.min(100,elapsed/dur*100);
+    const rem=Math.max(0,Math.ceil(dur-elapsed));
+    document.getElementById('avg-progress-fill').style.width=pct+'%';
+    document.getElementById('avg-countdown').textContent=rem+'s';
+    const n=STATE.avgSamples.length;
+    const avgAcc=n>0?STATE.avgSamples.reduce((a,s)=>a+s.acc,0)/n:0;
+    document.getElementById('avg-stats').textContent=
+      `Campioni: ${n} · Precisione media: ±${avgAcc<1?avgAcc.toFixed(2):Math.round(avgAcc)}m`;
+  },500);
+  STATE.avgTimer=setTimeout(()=>stopAvg(true),dur*1000);
+  toast(`⏱ Media GPS: ${dur}s — rimani fermo!`,dur*1000);
+});
+
+document.getElementById('btn-avg-cfg').addEventListener('click',()=>{
+  const d=parseInt(prompt('Durata media GPS in secondi (5–120):',STATE.avgDuration));
+  if(isNaN(d)||d<5||d>120){toast('Valore non valido (5–120s)');return;}
+  STATE.avgDuration=d;
+  document.getElementById('btn-avg').textContent=`⏱ Media ${d}s`;
+  toast(`⏱ Durata impostata: ${d}s`);
+});
+
+function stopAvg(save){
+  clearInterval(STATE.avgInterval); clearTimeout(STATE.avgTimer);
+  STATE.avgActive=false;
+  const row=document.getElementById('avg-row');
+  document.getElementById('avg-progress-fill').style.width=save?'100%':'0%';
+  const btnAvg=document.getElementById('btn-avg');
+  btnAvg.textContent=`⏱ Media ${STATE.avgDuration}s`;
+  btnAvg.style.color='#60a5fa'; btnAvg.style.borderColor='#2563eb';
+  setTimeout(()=>row.classList.remove('on'),1000);
+  if(!save||STATE.avgSamples.length===0){toast('⏹ Media annullata');return;}
+  const samples=STATE.avgSamples; const n=samples.length;
+  const lat=samples.reduce((a,s)=>a+s.lat,0)/n;
+  const lng=samples.reduce((a,s)=>a+s.lng,0)/n;
+  const accRaw=samples.reduce((a,s)=>a+s.acc,0)/n;
+  const acc=accRaw/Math.sqrt(n); // errore standard della media
+  const m={id:STATE.nextId++,n:STATE.nextNum++,
+    color:STATE.avgColor,nota:STATE.avgNota,descr:STATE.avgDescr,
+    lat,lng,acc:parseFloat(acc.toFixed(3)),accRaw:parseFloat(accRaw.toFixed(3)),
+    campioni:n,ts:new Date().toISOString(),manuale:false,averaged:true};
+  STATE.markers.push(m); addLeafletMarker(m);
+  updateCounter(); updateListCount();
+  if(STATE.avgColor==='green') document.getElementById('nota-inp').value='';
+  document.getElementById('descr-inp').value='';
+  const as=m.acc<1?m.acc.toFixed(2)+'m':Math.round(m.acc)+'m';
+  toast(`✅ ${COLOR_LABEL[STATE.avgColor]} n.${m.n} — media ${n} campioni ±${as}`,3500);
+}
+
+// ── MARKER LEAFLET ──
+const leafletMarkers=new Map();
 
 function addLeafletMarker(m){
-  const col = COLOR_HEX[m.color];
+  const col=COLOR_HEX[m.color]; const sz=STATE.markerSize;
   let icon;
-
-  const size = (STATE.markerSize || 32);
-  if(m.color === 'green'){
-    const label = m.nota || '?';
-    const fs = Math.max(10, size * 0.38);
-    icon = L.divIcon({
-      className: '',
-      html: `<div class="gps-marker-icon gps-marker-note" style="background:${col};padding:4px 8px;border-radius:6px;border:2px solid white;color:white;font-weight:800;font-size:${fs}px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.5)">${escHtml(label)}</div>`,
-      iconAnchor: [0, Math.round(size/2)],
-    });
+  if(m.color==='green'){
+    const fs=Math.max(10,sz*0.38); const label=m.nota||'?';
+    icon=L.divIcon({className:'',
+      html:`<div style="background:${col};padding:4px 8px;border-radius:6px;border:2px solid white;color:white;font-weight:800;font-size:${fs}px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.5)">${esc(label)}</div>`,
+      iconAnchor:[0,Math.round(sz/2)]});
   } else {
-    const size = (STATE.markerSize || 32);
-    icon = L.divIcon({
-      className: '',
-      html: `<div class="gps-marker-icon" style="width:${size}px;height:${size}px;background:${col};font-size:13px">${m.n}</div>`,
-      iconSize: [size, size],
-      iconAnchor: [size/2, size/2],
-    });
+    icon=L.divIcon({className:'',
+      html:`<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${col};border:2.5px solid white;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:${Math.round(sz*.42)}px;color:white;box-shadow:0 2px 8px rgba(0,0,0,.5)">${m.n}</div>`,
+      iconSize:[sz,sz],iconAnchor:[sz/2,sz/2]});
   }
-
-  const marker = L.marker([m.lat, m.lng], {icon})
-    .addTo(map)
-    .bindPopup(buildPopupHtml(m), {maxWidth: 260});
-
-  leafletMarkers.set(m.id, marker);
+  const mk=L.marker([m.lat,m.lng],{icon,draggable:true}).addTo(map).bindPopup(popup(m),{maxWidth:260});
+  mk.on('dragstart',()=>toast('↔ Trascina nella posizione corretta…'));
+  mk.on('dragend',()=>{
+    const ll=mk.getLatLng(); m.lat=ll.lat; m.lng=ll.lng; m.acc=0; m.manuale=true;
+    mk.setPopupContent(popup(m));
+    toast(`✋ Marker n.${m.n} corretto manualmente`);
+  });
+  leafletMarkers.set(m.id,mk);
 }
 
-function buildPopupHtml(m){
-  const col   = COLOR_HEX[m.color];
-  const label = COLOR_LABEL[m.color];
-  const acc   = m.acc < 1 ? m.acc.toFixed(2)+'m' : Math.round(m.acc)+'m';
-  const ts    = new Date(m.ts).toLocaleString('it-IT');
-  const nota  = m.nota  ? `<div style="margin-top:4px;color:#94a3b8">📝 ${escHtml(m.nota)}</div>`  : '';
-  const descr = m.descr ? `<div style="margin-top:4px;color:#e2e8f0">🗒 ${escHtml(m.descr)}</div>` : '';
-  return `
-    <div style="font-family:-apple-system,sans-serif">
-      <div style="font-weight:800;font-size:15px;color:${col}">${label} n.${m.n}</div>
-      ${nota}${descr}
-      <div style="margin-top:6px;font-size:11px;color:#64748b">
-        📍 ${m.lat.toFixed(6)}, ${m.lng.toFixed(6)}<br>
-        🎯 Precisione: ±${acc}<br>
-        🕐 ${ts}
-      </div>
-    </div>`;
+function popup(m){
+  const col=COLOR_HEX[m.color];
+  const acc=m.manuale?'✋ manuale':(m.acc<1?m.acc.toFixed(2)+'m':Math.round(m.acc)+'m');
+  const nota  = m.nota  ? `<div style="margin-top:3px;color:#94a3b8">📝 ${esc(m.nota)}</div>`  : '';
+  const descr = m.descr ? `<div style="margin-top:3px;color:#e2e8f0">🗒 ${esc(m.descr)}</div>` : '';
+  const avg   = m.averaged ? `<div style="margin-top:4px;color:#06b6d4;font-size:11px">⏱ Media ${m.campioni} campioni (grezzo ±${m.accRaw<1?m.accRaw.toFixed(2):Math.round(m.accRaw)}m)</div>` : '';
+  const man   = m.manuale  ? `<div style="margin-top:4px;color:#f59e0b;font-size:11px">✋ Posizione corretta manualmente</div>` : '';
+  return `<div style="font-family:-apple-system,sans-serif">
+    <div style="font-weight:800;font-size:14px;color:${col}">${COLOR_LABEL[m.color]} n.${m.n}</div>
+    ${nota}${descr}
+    <div style="margin-top:5px;font-size:11px;color:#64748b">
+      📍 ${m.lat.toFixed(6)}, ${m.lng.toFixed(6)}<br>
+      🎯 ±${acc} &nbsp; 🕐 ${new Date(m.ts).toLocaleString('it-IT')}
+    </div>${avg}${man}</div>`;
 }
 
-function escHtml(s){
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
-// ═══════════════════════════════════════════════════
-//  TIPO MARKER
-// ═══════════════════════════════════════════════════
-document.querySelectorAll('.type-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    STATE.currentColor = btn.dataset.color;
+// ── TIPO MARKER ──
+document.querySelectorAll('.type-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.type-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active'); STATE.currentColor=btn.dataset.color;
     updateRecordBtn();
-    // Mostra/nasconde campo nota (solo verde) e descrizione (sempre)
-    const nr = document.getElementById('nota-row');
-    nr.classList.toggle('visible', STATE.currentColor === 'green');
-    if(STATE.currentColor === 'green') document.getElementById('nota-inp').focus();
-    document.getElementById('descr-row').style.display = 'flex';
+    document.getElementById('nota-row').classList.toggle('on',STATE.currentColor==='green');
+    if(STATE.currentColor==='green') document.getElementById('nota-inp').focus();
   });
 });
 
 function updateRecordBtn(){
-  const btn = document.getElementById('btn-record');
-  const col = STATE.currentColor;
-  btn.className = col === 'red' ? '' : col;
-  const emoji = {red:'📷', blue:'📷', yellow:'🎥', green:'✎'}[col];
-  btn.textContent = `${emoji} Registra ${COLOR_LABEL[col]}`;
-  btn.id = 'btn-record'; // preserva id
+  const btn=document.getElementById('btn-record'); const col=STATE.currentColor;
+  btn.className=col==='red'?'':col; btn.id='btn-record';
+  btn.textContent={red:'📷',blue:'📷',yellow:'🎥',green:'✎'}[col]+' Registra '+COLOR_LABEL[col];
 }
 
-function updateCounter(){
-  document.getElementById('counter-num').textContent = STATE.nextNum;
-}
+function updateCounter(){document.getElementById('counter-num').textContent=STATE.nextNum;}
+function updateListCount(){document.getElementById('list-count').textContent=STATE.markers.length;}
 
-// ═══════════════════════════════════════════════════
-//  TOOLBAR MAPPA
-// ═══════════════════════════════════════════════════
-document.getElementById('btn-center').addEventListener('click', () => {
-  if(STATE.gpsPos) map.setView([STATE.gpsPos.lat, STATE.gpsPos.lng], 19);
+// ── SLIDER DIMENSIONE ──
+document.getElementById('marker-size').addEventListener('input',function(){
+  STATE.markerSize=parseInt(this.value);
+  leafletMarkers.forEach((mk,id)=>{
+    const m=STATE.markers.find(mm=>mm.id===id);
+    if(m){map.removeLayer(mk);leafletMarkers.delete(id);addLeafletMarker(m);}
+  });
+});
+
+// ── TOOLBAR MAPPA ──
+document.getElementById('btn-center').addEventListener('click',()=>{
+  if(STATE.gpsPos) map.setView([STATE.gpsPos.lat,STATE.gpsPos.lng],19);
   else toast('⏳ Posizione GPS non disponibile');
 });
-
-document.getElementById('btn-satellite').addEventListener('click', () => {
-  map.removeLayer(layers[layerOrder[currentLayerIdx]]);
-  currentLayerIdx = (currentLayerIdx + 1) % layerOrder.length;
-  const next = layerOrder[currentLayerIdx];
-  layers[next].addTo(map);
-  document.getElementById('btn-satellite').textContent = layerLabels[next];
+document.getElementById('btn-satellite').addEventListener('click',()=>{
+  map.removeLayer(layers[STATE.layerIdx]);
+  STATE.layerIdx=(STATE.layerIdx+1)%layers.length;
+  layers[STATE.layerIdx].addTo(map);
+  document.getElementById('btn-satellite').textContent=layerDefs[STATE.layerIdx].label;
 });
-
-document.getElementById('btn-undo-map').addEventListener('click', () => {
-  if(!STATE.markers.length){ toast('Nessun marker da annullare'); return; }
-  const last = STATE.markers.pop();
-  const lm = leafletMarkers.get(last.id);
-  if(lm) map.removeLayer(lm);
-  leafletMarkers.delete(last.id);
-  STATE.nextNum--;
-  updateCounter();
-  updateListCount();
+document.getElementById('btn-undo-map').addEventListener('click',()=>{
+  if(!STATE.markers.length){toast('Nessun marker da annullare');return;}
+  const last=STATE.markers.pop();
+  const mk=leafletMarkers.get(last.id); if(mk) map.removeLayer(mk);
+  leafletMarkers.delete(last.id); STATE.nextNum--;
+  updateCounter(); updateListCount();
   toast(`↩ Annullato: ${COLOR_LABEL[last.color]} n.${last.n}`);
 });
 
-// ═══════════════════════════════════════════════════
-//  LISTA MARKER
-// ═══════════════════════════════════════════════════
-document.getElementById('btn-list').addEventListener('click', openList);
-document.getElementById('list-close').addEventListener('click', () => {
-  document.getElementById('list-panel').classList.remove('open');
-});
-document.getElementById('list-panel').addEventListener('click', e => {
-  if(e.target === document.getElementById('list-panel'))
-    document.getElementById('list-panel').classList.remove('open');
-});
-
-document.getElementById('btn-clear-all').addEventListener('click', () => {
+// ── LISTA ──
+document.getElementById('btn-list').addEventListener('click',openList);
+document.getElementById('list-close').addEventListener('click',()=>document.getElementById('list-panel').classList.remove('open'));
+document.getElementById('list-panel').addEventListener('click',e=>{if(e.target===document.getElementById('list-panel'))document.getElementById('list-panel').classList.remove('open');});
+document.getElementById('btn-clear-all').addEventListener('click',()=>{
   if(!STATE.markers.length) return;
   if(!confirm(`Eliminare tutti i ${STATE.markers.length} marker?`)) return;
-  STATE.markers.forEach(m => {
-    const lm = leafletMarkers.get(m.id); if(lm) map.removeLayer(lm);
-  });
-  leafletMarkers.clear();
-  STATE.markers = [];
-  STATE.nextNum = 1;
-  STATE.nextId  = 1;
+  STATE.markers.forEach(m=>{const mk=leafletMarkers.get(m.id);if(mk)map.removeLayer(mk);});
+  leafletMarkers.clear(); STATE.markers=[]; STATE.nextNum=1; STATE.nextId=1;
   updateCounter(); updateListCount();
   document.getElementById('list-panel').classList.remove('open');
   toast('🗑 Tutti i marker eliminati');
 });
 
 function openList(){
-  const body = document.getElementById('list-body');
-  body.innerHTML = '';
+  const body=document.getElementById('list-body'); body.innerHTML='';
   if(!STATE.markers.length){
-    body.innerHTML = '<div style="padding:20px;text-align:center;color:#64748b;font-size:13px">Nessun marker registrato.</div>';
+    body.innerHTML='<div style="padding:18px;text-align:center;color:#64748b;font-size:13px">Nessun marker registrato.</div>';
   } else {
-    STATE.markers.forEach(m => {
-      const col = COLOR_HEX[m.color];
-      const acc = m.acc < 1 ? m.acc.toFixed(2)+'m' : Math.round(m.acc)+'m';
-      const div = document.createElement('div');
-      div.className = 'list-item';
-      const isNote = m.color === 'green';
-      div.innerHTML = `
-        <div class="list-badge${isNote?' note-rect':''}" style="background:${col}">${isNote ? escHtml(m.nota||'?') : m.n}</div>
+    STATE.markers.forEach(m=>{
+      const col=COLOR_HEX[m.color];
+      const acc=m.manuale?'✋':m.averaged?`⏱±${m.acc<1?m.acc.toFixed(2):Math.round(m.acc)}m`:`±${m.acc<1?m.acc.toFixed(2):Math.round(m.acc)}m`;
+      const div=document.createElement('div'); div.className='list-item';
+      const isN=m.color==='green';
+      div.innerHTML=`
+        <div class="list-badge${isN?' nr':''}" style="background:${col}">${isN?esc(m.nota||'?'):m.n}</div>
         <div class="list-info">
-          <div class="list-title">${COLOR_LABEL[m.color]} n.${m.n}${m.descr?' — '+escHtml(m.descr):''}</div>
-          <div class="list-coords">📍 ${m.lat.toFixed(6)}, ${m.lng.toFixed(6)} · ±${acc}</div>
+          <div class="list-title">${COLOR_LABEL[m.color]} n.${m.n}${m.descr?' — '+esc(m.descr):''}</div>
+          <div class="list-sub">📍 ${m.lat.toFixed(6)}, ${m.lng.toFixed(6)} · ${acc}</div>
         </div>
         <button class="list-del" data-id="${m.id}">×</button>`;
-      div.querySelector('.list-badge').addEventListener('click', () => {
+      div.querySelector('.list-badge').addEventListener('click',()=>{
         document.getElementById('list-panel').classList.remove('open');
-        map.setView([m.lat, m.lng], 19);
-        leafletMarkers.get(m.id)?.openPopup();
+        map.setView([m.lat,m.lng],19); leafletMarkers.get(m.id)?.openPopup();
       });
       body.appendChild(div);
     });
   }
   updateListCount();
   document.getElementById('list-panel').classList.add('open');
-  // Listener elimina singolo
-  body.querySelectorAll('.list-del').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const id = parseInt(btn.dataset.id);
-      const idx = STATE.markers.findIndex(m => m.id === id);
-      if(idx >= 0) STATE.markers.splice(idx, 1);
-      const lm = leafletMarkers.get(id); if(lm) map.removeLayer(lm);
-      leafletMarkers.delete(id);
-      openList(); // ricarica lista
-      updateListCount();
+  body.querySelectorAll('.list-del').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const id=parseInt(btn.dataset.id);
+      STATE.markers.splice(STATE.markers.findIndex(m=>m.id===id),1);
+      const mk=leafletMarkers.get(id); if(mk) map.removeLayer(mk);
+      leafletMarkers.delete(id); openList(); updateListCount();
     });
   });
 }
 
-function updateListCount(){
-  document.getElementById('list-count').textContent = STATE.markers.length;
-}
-
-// ═══════════════════════════════════════════════════
-//  EXPORT GEOJSON
-// ═══════════════════════════════════════════════════
-document.getElementById('btn-export').addEventListener('click', () => {
-  if(!STATE.markers.length){ toast('Nessun marker da esportare'); return; }
-
-  const geojson = {
-    type: 'FeatureCollection',
-    features: STATE.markers.map(m => ({
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: [m.lng, m.lat] },
-      properties: {
-        n:         m.n,
-        tipo:      COLOR_LABEL[m.color],
-        colore:    m.color,
-        nota:      m.nota || '',
-        precisione_m: parseFloat(m.acc.toFixed(3)),
-        timestamp: m.ts,
-        lat:       m.lat,
-        lng:       m.lng,
-      }
-    }))
-  };
-
-  const json = JSON.stringify(geojson, null, 2);
-  const blob = new Blob([json], {type: 'application/geo+json'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  // Nome file con data
-  const now = new Date();
-  const d = [now.getFullYear(),
-    String(now.getMonth()+1).padStart(2,'0'),
-    String(now.getDate()).padStart(2,'0')].join('-');
-  a.download = `rilevamento_${d}.geojson`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  toast(`💾 Esportati ${STATE.markers.length} marker`);
+// ── EXPORT GEOJSON ──
+document.getElementById('btn-export').addEventListener('click',()=>{
+  if(!STATE.markers.length){toast('Nessun marker da esportare');return;}
+  const gj={type:'FeatureCollection',features:STATE.markers.map(m=>({
+    type:'Feature',geometry:{type:'Point',coordinates:[m.lng,m.lat]},
+    properties:{n:m.n,tipo:COLOR_LABEL[m.color],colore:m.color,nota:m.nota||'',
+      descrizione:m.descr||'',precisione_m:m.manuale?'manuale':parseFloat(m.acc.toFixed(3)),
+      campioni_media:m.campioni||1,corretto_manualmente:m.manuale||false,
+      media_gps:m.averaged||false,timestamp:m.ts,lat:m.lat,lng:m.lng}
+  }))};
+  dlBlob(new Blob([JSON.stringify(gj,null,2)],{type:'application/geo+json'}),`rilevamento_${today()}.geojson`);
+  toast(`💾 GeoJSON: ${STATE.markers.length} marker`);
 });
 
-// ═══════════════════════════════════════════════════
-//  TOAST
-// ═══════════════════════════════════════════════════
-let toastTimer = null;
-function toast(msg, dur=2500){
-  const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), dur);
-}
-
-// ═══════════════════════════════════════════════════
-//  INIT
-// ═══════════════════════════════════════════════════
-startGPS();
-updateRecordBtn();
-updateCounter();
-
-// Slider dimensione marker
-document.getElementById('marker-size').addEventListener('input', function(){
-  STATE.markerSize = parseInt(this.value);
-  // Ridisegna tutti i marker
-  leafletMarkers.forEach((lm, id) => {
-    const m = STATE.markers.find(mm => mm.id === id);
-    if(m){ map.removeLayer(lm); leafletMarkers.delete(id); addLeafletMarker(m); }
-  });
-});
-STATE.markerSize = 32;
-
-// Screenshot mappa → JPG
-document.getElementById('btn-screenshot').addEventListener('click', async () => {
-  toast('📸 Preparazione screenshot…');
-  try {
-    // Carica html2canvas
-    if(!window.html2canvas){
-      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
-    }
-    const mapEl = document.getElementById('map');
-    const canvas = await html2canvas(mapEl, {
-      useCORS: true, allowTaint: true, logging: false,
-      width: mapEl.offsetWidth, height: mapEl.offsetHeight,
-    });
-    canvas.toBlob(blob => {
-      const now = new Date();
-      const d = [now.getFullYear(),
-        String(now.getMonth()+1).padStart(2,'0'),
-        String(now.getDate()).padStart(2,'0')].join('-');
-      const t = [String(now.getHours()).padStart(2,'0'),
-        String(now.getMinutes()).padStart(2,'0')].join('-');
-      dlBlob(blob, `mappa_${d}_${t}.jpg`);
-      toast('✅ Screenshot salvato!');
-    }, 'image/jpeg', 0.92);
-  } catch(e) {
-    toast('⚠️ Errore screenshot: ' + e.message);
-  }
-});
-
-function loadScript(src){
-  return new Promise((res,rej) => {
-    const s = document.createElement('script');
-    s.src = src; s.onload = res; s.onerror = rej;
-    document.head.appendChild(s);
-  });
-}
-
-// Export TXT
-document.getElementById('btn-txt').addEventListener('click', () => {
-  if(!STATE.markers.length){ toast('Nessun marker da esportare'); return; }
-  const now = new Date();
-  const lines = [
-    'RILEVAMENTO GPS PONTI',
+// ── EXPORT TXT ──
+document.getElementById('btn-txt').addEventListener('click',()=>{
+  if(!STATE.markers.length){toast('Nessun marker da esportare');return;}
+  const now=new Date();
+  const lines=['RILEVAMENTO GPS PONTI',
     `Data: ${now.toLocaleDateString('it-IT')} ${now.toLocaleTimeString('it-IT')}`,
-    `Marker totali: ${STATE.markers.length}`,
-    '═'.repeat(50),
-    '',
-  ];
-  STATE.markers.forEach(m => {
-    const acc   = m.acc < 1 ? m.acc.toFixed(2)+'m' : Math.round(m.acc)+'m';
-    const ts    = new Date(m.ts).toLocaleString('it-IT');
+    `Marker totali: ${STATE.markers.length}`,'═'.repeat(50),''];
+  STATE.markers.forEach(m=>{
+    const acc=m.manuale?'corretto manualmente':m.acc<1?m.acc.toFixed(2)+'m':Math.round(m.acc)+'m';
     lines.push(`── Marker n.${m.n} ──`);
     lines.push(`Tipo:        ${COLOR_LABEL[m.color]}`);
     lines.push(`Latitudine:  ${m.lat.toFixed(8)}`);
     lines.push(`Longitudine: ${m.lng.toFixed(8)}`);
-    lines.push(`Precisione:  ±${acc}`);
-    lines.push(`Orario:      ${ts}`);
+    lines.push(`Precisione:  ±${acc}${m.averaged?` (media di ${m.campioni} campioni)`:''}`);
+    lines.push(`Orario:      ${new Date(m.ts).toLocaleString('it-IT')}`);
     if(m.descr) lines.push(`Descrizione: ${m.descr}`);
     if(m.nota)  lines.push(`Nota:        ${m.nota}`);
     lines.push('');
   });
-  const blob = new Blob([lines.join('\n')], {type:'text/plain;charset=utf-8'});
-  const d = now.toISOString().slice(0,10);
-  dlBlob(blob, `rilevamento_${d}.txt`);
-  toast(`📝 TXT esportato (${STATE.markers.length} marker)`);
+  dlBlob(new Blob([lines.join('\n')],{type:'text/plain;charset=utf-8'}),`rilevamento_${today()}.txt`);
+  toast(`📝 TXT: ${STATE.markers.length} marker`);
 });
+
+// ── SCREENSHOT ──
+document.getElementById('btn-screenshot').addEventListener('click',()=>{
+  toast('📸 Generazione screenshot…');
+  const el=document.getElementById('map');
+  const W=el.offsetWidth,H=el.offsetHeight,dpr=window.devicePixelRatio||1;
+  const cv=document.createElement('canvas'); cv.width=W*dpr; cv.height=H*dpr;
+  const ctx=cv.getContext('2d'); ctx.scale(dpr,dpr);
+  ctx.fillStyle='#0f172a'; ctx.fillRect(0,0,W,H);
+  const rect=el.getBoundingClientRect();
+  const tiles=[...el.querySelectorAll('.leaflet-tile-container img')];
+  let loaded=0; const total=tiles.length;
+  const finish=()=>{
+    drawOnCanvas(ctx,rect);
+    cv.toBlob(blob=>{
+      if(blob){dlBlob(blob,`mappa_${today()}.jpg`);toast('✅ Screenshot salvato!');}
+      else toast('⚠️ Usa screenshot iOS: tasto laterale + volume su');
+    },'image/jpeg',0.92);
+  };
+  if(total===0){finish();return;}
+  tiles.forEach(img=>{
+    const tmp=new Image(); tmp.crossOrigin='anonymous';
+    const done=()=>{loaded++;if(loaded===total)finish();};
+    tmp.onload=()=>{const r=img.getBoundingClientRect();ctx.drawImage(tmp,r.left-rect.left,r.top-rect.top,r.width,r.height);done();};
+    tmp.onerror=done; tmp.src=img.src;
+  });
+});
+
+function drawOnCanvas(ctx,rect){
+  const sz=STATE.markerSize;
+  STATE.markers.forEach(m=>{
+    const mk=leafletMarkers.get(m.id); if(!mk) return;
+    const el=mk.getElement(); if(!el) return;
+    const r=el.getBoundingClientRect();
+    const x=r.left-rect.left+r.width/2, y=r.top-rect.top+r.height/2;
+    const col=COLOR_HEX[m.color];
+    if(m.color==='green'){
+      const label=m.nota||'?';
+      ctx.font=`bold 11px -apple-system,Arial,sans-serif`;
+      const tw=ctx.measureText(label).width,rw=tw+16,rh=22;
+      ctx.fillStyle=col; ctx.beginPath(); ctx.roundRect(x-rw/2,y-rh/2,rw,rh,4); ctx.fill();
+      ctx.strokeStyle='white'; ctx.lineWidth=2; ctx.stroke();
+      ctx.fillStyle='white'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(label,x,y);
+    } else {
+      ctx.beginPath(); ctx.arc(x,y,sz/2,0,Math.PI*2);
+      ctx.fillStyle=col; ctx.fill();
+      ctx.strokeStyle='white'; ctx.lineWidth=2.5; ctx.stroke();
+      ctx.fillStyle='white'; ctx.font=`bold ${Math.round(sz*.42)}px -apple-system,Arial,sans-serif`;
+      ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(String(m.n),x,y);
+    }
+  });
+}
+
+// ── UTILS ──
+function today(){
+  const n=new Date();
+  return [n.getFullYear(),String(n.getMonth()+1).padStart(2,'0'),String(n.getDate()).padStart(2,'0')].join('-');
+}
+function dlBlob(blob,name){
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+let toastTimer=null;
+function toast(msg,dur=2500){
+  const el=document.getElementById('toast'); el.textContent=msg; el.classList.add('show');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove('show'),dur);
+}
+
+// ── INIT ──
+startGPS(); updateRecordBtn(); updateCounter();
 </script>
 </body>
 </html>
